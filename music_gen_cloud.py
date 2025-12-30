@@ -1,4 +1,3 @@
-python -c "import sys; content = sys.stdin.read(); open('music_gen_cloud.py', 'w', encoding='utf-8').write(content)" << 'EOF'
 import argparse
 import sys
 import json
@@ -91,4 +90,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-EOF

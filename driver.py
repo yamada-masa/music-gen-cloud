@@ -35,13 +35,16 @@ def get_env_or_error(key: str) -> str:
         raise EnvironmentError(f"Error: Environment variable '{key}' is not set.")
     return value
 
+# Config from .env
 PROJECT = get_env_or_error("PROJECT")
 IMAGE = get_env_or_error("IMAGE")
 ZONE = os.getenv("ZONE", "us-east1-c")
 JSONL_LOCAL = os.getenv("JSONL_LOCAL", "sample.jsonl")
 OUTDIR = os.getenv("OUTDIR", "./downloaded_wav")
-INSTANCE_NAME = os.getenv("INSTANCE_NAME", "musicgen-t4")
+INSTANCE_NAME = os.getenv("INSTANCE_NAME", "musicgen-l4")
 DELETE_VM = os.getenv("DELETE_VM", "True").lower() == "true"
+# New options for Spot and Model
+MODEL_SIZE = os.getenv("MODEL_SIZE", "medium")
 
 def cmd(name: str) -> str:
     """Return command name / OS に応じて実行ファイル名を返す"""
@@ -60,9 +63,7 @@ def wait_for_completion():
     while True:
         # Get progress status from metadata / メタデータから進捗を取得
         res = subprocess.run([cmd("gcloud"), "compute", "instances", "describe", INSTANCE_NAME, f"--zone={ZONE}", f"--project={PROJECT}", "--format=value(metadata.items.progress)"], capture_output=True, text=True)
-        status = res.stdout.strip()
-        if not status:
-            status = "Initializing"
+        status = res.stdout.strip() or "Initializing"
 
         # Check if startup script finished / 終了判定
         check = subprocess.run([cmd("gcloud"), "compute", "ssh", INSTANCE_NAME, f"--zone={ZONE}", "--project", PROJECT, "--command", "sudo journalctl -u google-startup-scripts.service --no-pager"], capture_output=True, text=True)
@@ -73,7 +74,6 @@ def wait_for_completion():
             break
         
         waiting_for = time.time() - start_wait
-        # Update progress on the same line / 同一行で進捗を更新
         print(f"  >>> Current Status: [{status}] ({waiting_for:.0f}s elapsed)      ", end="\r")
         time.sleep(10)
 
@@ -84,12 +84,23 @@ if __name__ == "__main__":
         with open(JSONL_LOCAL, "r", encoding="utf-8") as f:
             jsonl_payload = f.read()
 
-        log_progress("Creating GCE Instance (Metadata Mode)...")
-        # create command without backslashes / バックスラッシュなしでコマンドを構成
-        create_args = [cmd("gcloud"), "compute", "instances", "create", INSTANCE_NAME, f"--project={PROJECT}", f"--zone={ZONE}", "--machine-type=g2-standard-4", "--accelerator=count=1,type=nvidia-l4", "--maintenance-policy=TERMINATE", "--image-family=common-cu124-debian-11", "--image-project=ml-images", f"--metadata=image={IMAGE},jsonl_payload={jsonl_payload},progress=starting", "--metadata-from-file=startup-script=run_musicgen.sh", "--scopes=https://www.googleapis.com/auth/cloud-platform"]
+        log_progress(f"Creating Spot L4 Instance (Model: {MODEL_SIZE})...")
+        # Spot Instance + L4 GPU configuration
+        create_args = [
+            cmd("gcloud"), "compute", "instances", "create", INSTANCE_NAME,
+            f"--project={PROJECT}", f"--zone={ZONE}",
+            "--machine-type=g2-standard-4",
+            "--accelerator=count=1,type=nvidia-l4",
+            "--provisioning-model=SPOT",
+            "--instance-termination-action=TERMINATE",
+            "--image-family=common-cu124-debian-11",
+            "--image-project=ml-images",
+            f"--metadata=image={IMAGE},jsonl_payload={jsonl_payload},model_size={MODEL_SIZE},progress=starting",
+            "--metadata-from-file=startup-script=run_musicgen.sh",
+            "--scopes=https://www.googleapis.com/auth/cloud-platform"
+        ]
         
         subprocess.run(create_args, check=True)
-        
         wait_for_completion()
         
         log_progress(f"Downloading results to {OUTDIR}...")
@@ -100,6 +111,3 @@ if __name__ == "__main__":
         if DELETE_VM:
             log_progress(f"Deleting instance {INSTANCE_NAME}...")
             subprocess.run([cmd("gcloud"), "compute", "instances", "delete", INSTANCE_NAME, f"--zone={ZONE}", "--project", PROJECT, "--quiet"])
-
-    total_time = time.time() - overall_start
-    print(f"\nTotal Execution Time: {total_time/60:.2f} minutes")
