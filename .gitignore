@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+*.class
+.env
+venv/
+.venv/
+
+# Google Cloud SDK / SSH
+.ssh/
+google_compute_engine
+google_compute_engine.pub
+
+# Project specific
+project_dump.txt
+downloaded_wav/
+out/
