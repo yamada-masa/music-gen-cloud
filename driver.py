@@ -43,7 +43,6 @@ JSONL_LOCAL = os.getenv("JSONL_LOCAL", "sample.jsonl")
 OUTDIR = os.getenv("OUTDIR", "./downloaded_wav")
 INSTANCE_NAME = os.getenv("INSTANCE_NAME", "musicgen-l4")
 DELETE_VM = os.getenv("DELETE_VM", "True").lower() == "true"
-# New options for Spot and Model
 MODEL_SIZE = os.getenv("MODEL_SIZE", "medium")
 
 def cmd(name: str) -> str:
@@ -59,20 +58,21 @@ def wait_for_completion():
     """Monitor VM progress via metadata / メタデータを監視して進捗を表示"""
     log_progress(f"Monitoring VM: {INSTANCE_NAME}...")
     start_wait = time.time()
-    
+
     while True:
         # Get progress status from metadata / メタデータから進捗を取得
         res = subprocess.run([cmd("gcloud"), "compute", "instances", "describe", INSTANCE_NAME, f"--zone={ZONE}", f"--project={PROJECT}", "--format=value(metadata.items.progress)"], capture_output=True, text=True)
         status = res.stdout.strip() or "Initializing"
 
-        # Check if startup script finished / 終了判定
+        # Check if startup script finished via SSH / SSH経由で起動スクリプトの終了判定
+        # Note: Needs gcloud auth and project access
         check = subprocess.run([cmd("gcloud"), "compute", "ssh", INSTANCE_NAME, f"--zone={ZONE}", "--project", PROJECT, "--command", "sudo journalctl -u google-startup-scripts.service --no-pager"], capture_output=True, text=True)
-        
+
         if "Finished running startup scripts" in check.stdout:
             print("") # New line
             log_progress("VM task finished successfully.")
             break
-        
+
         waiting_for = time.time() - start_wait
         print(f"  >>> Current Status: [{status}] ({waiting_for:.0f}s elapsed)      ", end="\r")
         time.sleep(10)
@@ -80,34 +80,42 @@ def wait_for_completion():
 if __name__ == "__main__":
     try:
         log_progress("Starting MusicGen Cloud Pipeline")
-        
-        with open(JSONL_LOCAL, "r", encoding="utf-8") as f:
-            jsonl_payload = f.read()
 
+        # Create Spot L4 Instance / Spot L4 インスタンスを作成
         log_progress(f"Creating Spot L4 Instance (Model: {MODEL_SIZE})...")
-        # Spot Instance + L4 GPU configuration
+        
+        # NOTE: --metadata-from-file is used for 'jsonl_payload' to prevent gcloud comma-parsing errors on Windows.
+        # 注: Windowsでのカンマ区切り解析エラーを防ぐため、jsonl_payload はファイルから読み込ませます。
         create_args = [
             cmd("gcloud"), "compute", "instances", "create", INSTANCE_NAME,
             f"--project={PROJECT}", f"--zone={ZONE}",
             "--machine-type=g2-standard-4",
             "--accelerator=count=1,type=nvidia-l4",
             "--provisioning-model=SPOT",
-            "--instance-termination-action=TERMINATE",
+            "--instance-termination-action=STOP",  # Fixed from TERMINATE
             "--image-family=common-cu124-debian-11",
             "--image-project=ml-images",
-            f"--metadata=image={IMAGE},jsonl_payload={jsonl_payload},model_size={MODEL_SIZE},progress=starting",
-            "--metadata-from-file=startup-script=run_musicgen.sh",
+            f"--metadata=image={IMAGE},model_size={MODEL_SIZE},progress=starting",
+            f"--metadata-from-file=startup-script=run_musicgen.sh,jsonl_payload={JSONL_LOCAL}",
             "--scopes=https://www.googleapis.com/auth/cloud-platform"
         ]
-        
+
         subprocess.run(create_args, check=True)
-        wait_for_completion()
         
+        # Monitor the process / 進捗を監視
+        wait_for_completion()
+
+        # Download result wav files / 結果のwavファイルをダウンロード
         log_progress(f"Downloading results to {OUTDIR}...")
         os.makedirs(OUTDIR, exist_ok=True)
+        # scp result files / ファイルをローカルへ転送
         subprocess.run([cmd("gcloud"), "compute", "scp", "--recurse", f"{INSTANCE_NAME}:/opt/musicgen/out/*.wav", OUTDIR, f"--zone={ZONE}", f"--project={PROJECT}"], check=True)
-        
+
+    except Exception as e:
+        log_progress(f"An error occurred: {e}")
+
     finally:
+        # Final cleanup / 最終クリーンアップ（インスタンス削除）
         if DELETE_VM:
             log_progress(f"Deleting instance {INSTANCE_NAME}...")
             subprocess.run([cmd("gcloud"), "compute", "instances", "delete", INSTANCE_NAME, f"--zone={ZONE}", "--project", PROJECT, "--quiet"])
