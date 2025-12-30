@@ -7,6 +7,17 @@
 # English
 A minimal, cost-optimized pipeline for generating music using Meta’s MusicGen on **GCP Spot Instances**.
 
+### ✅ Tested Environment
+- **Local / Orchestrator**:
+  - OS: macOS / Linux / Windows (WSL2)
+  - Container Engine: **Podman** (verified) or Docker
+  - Python: 3.10+
+- **Cloud / GPU**:
+  - Google Cloud Platform (GCP)
+  - Instance: `g2-standard-4`
+  - GPU: **NVIDIA L4** (24GB VRAM)
+  - CUDA: 12.1
+
 ### ✨ Key Features
 - **Spot L4 GPU**: Optimized for NVIDIA L4 (G2 instances), reducing costs by ~70-90%.
 - **Podman/Docker Ready**: Fully containerized environment for reproducibility.
@@ -33,7 +44,7 @@ python driver.py
 
 ### 📝 Batch Configuration (`sample.jsonl`)
 
-Add jobs line by line:
+Add jobs line by line. GCE Metadata has a 512KB limit; for massive batches, split the file.
 
 ```json
 {"prompt": "Lo-fi hip hop", "duration": 30, "seed": 42, "filename_tag": "relax"}
@@ -45,6 +56,22 @@ Add jobs line by line:
 # 日本語
 
 GCP スポットインスタンスを利用した、低コストかつ再現性の高い MusicGen 生成パイプラインです。
+
+### ✅ 動作確認済み環境
+
+* **ローカル / オーケストレーター**:
+* OS: macOS / Linux / Windows (WSL2)
+* コンテナエンジン: **Podman** (確認済み) または Docker
+* Python: 3.10以上
+
+
+* **クラウド / GPU**:
+* Google Cloud Platform (GCP)
+* インスタンス: `g2-standard-4`
+* GPU: **NVIDIA L4** (24GB VRAM)
+* CUDA: 12.1
+
+
 
 ### ✨ 主な特徴
 
@@ -63,7 +90,11 @@ GCP スポットインスタンスを利用した、低コストかつ再現性�
 
 ### 📝 設定ファイル (`sample.jsonl`) の書き方
 
+各行に以下の JSON オブジェクトを記述します。
+
 * `prompt`: 生成したい音楽の説明
 * `duration`: 生成する長さ（秒）
 * `seed`: 再現用のシード値（任意）
-* `filename_tag`: ファイル名のプレフィックス
+* `filename_tag`: ファイル名のプレフィックス（接頭辞）
+
+> **注意**: GCE メタデータの制限（512KB）があるため、膨大なジョブを一度に投げる場合はファイルを分割してください。
