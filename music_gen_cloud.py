@@ -12,12 +12,12 @@ from audiocraft.data.audio import audio_write
 # バッチジョブ用のデフォルト値（ジョブごとに上書き可能）
 # ----------------------------------------
 DEFAULTS = {
-    "prompt": "ambient",
-    "duration": 10,
-    "seed": None,
-    "filename_tag": "music",
-    "batch_size": 1,
-    "num_tracks": 1
+    "prompt": "ambient",                # Default prompt / デフォルトのプロンプト
+    "duration": 10,                      # Default duration in seconds / デフォルトの長さ（秒）
+    "seed": None,                        # Default: random seed / デフォルト：ランダムシード
+    "filename_tag": "music",             # Base filename tag / ファイル名の共通プレフィックス
+    "batch_size": 1,                     # How many times to repeat this job / このジョブを何セット繰り返すか
+    "num_tracks": 1                      # Tracks per batch (multi-track) / 1セットあたり何トラック生成するか
 }
 
 def get_prompt_hash(prompt: str, length=8):
@@ -42,14 +42,15 @@ def generate_single_track(model: MusicGen, prompt: str, duration: int, seed):
 
 def save_waveform(path: str, wav, sample_rate: int):
     """Save waveform as audio file. / 音声ファイルとして保存。"""
+    # audio_write adds .wav extension automatically / audio_write が自動で .wav を付与
     audio_write(path, wav, sample_rate=sample_rate, strategy="loudness", loudness_compressor=True)
 
-def run_single_prompt_mode(model: MusicGen, output_dir: str, prompt: str):
+def run_single_prompt_mode(model: MusicGen, output_dir: str, prompt: str, duration: int):
     """Single prompt mode. / 単発モード。"""
     p_hash = get_prompt_hash(prompt)
     seed = torch.seed()
-    print(f"[MusicGen] Single prompt: {prompt} (Seed: {seed})")
-    wav = generate_single_track(model, prompt, 10, seed)
+    print(f"[MusicGen] Single prompt: {prompt} (Seed: {seed}, Duration: {duration}s)")
+    wav = generate_single_track(model, prompt, duration, seed)
     os.makedirs(output_dir, exist_ok=True)
     out_path = os.path.join(output_dir, f"single_s{seed}_h{p_hash}")
     save_waveform(out_path, wav, model.sample_rate)
@@ -69,24 +70,25 @@ def run_batch_mode(model: MusicGen, output_dir: str, stdin_data: str):
             for t in range(int(job["num_tracks"])):
                 actual_seed = job["seed"] if job["seed"] is not None else torch.seed()
                 wav = generate_single_track(model, prompt, int(job["duration"]), actual_seed)
-                # 新しい命名規則: tag_s(シード)_h(ハッシュ)_j(ジョブ)_b_t
+                # Naming rule: tag_s(seed)_h(hash)_j(job)_b_t
                 filename = f"{job['filename_tag']}_s{actual_seed}_h{p_hash}_j{job_idx}_b{b}_t{t}"
                 save_waveform(os.path.join(output_dir, filename), wav, model.sample_rate)
 
 def main():
-    parser = argparse.ArgumentParser(description="MusicGen Cloud Runner: single-prompt and batch JSONL mode.\nMusicGen Cloud Runner：単発プロンプト／JSONLバッチ両対応。")
+    parser = argparse.ArgumentParser(description="MusicGen Cloud Runner: single-prompt and batch JSONL mode.")
     parser.add_argument("--model", type=str, default="medium", help="Model size: small | medium | large")
-    parser.add_argument("--output", type=str, required=True, help="Output directory path (e.g., /out)")
-    parser.add_argument("--prompt", type=str, help="Single prompt mode. If omitted, JSONL batch is read from stdin.\n単発モード用プロンプト。省略時は stdin から JSONL バッチを読み込み。")
+    parser.add_argument("--output", type=str, required=True, help="Output directory path")
+    parser.add_argument("--prompt", type=str, help="Single prompt mode.")
+    parser.add_argument("--duration", type=int, default=10, help="Duration for single prompt mode.")
     args = parser.parse_args()
+    
     model = MusicGen.get_pretrained(args.model)
     if args.prompt:
-        run_single_prompt_mode(model, args.output, args.prompt)
+        run_single_prompt_mode(model, args.output, args.prompt, args.duration)
     else:
         stdin_data = sys.stdin.read()
-        if not stdin_data.strip():
-            parser.error("No prompt provided.\nプロンプトが指定されていません。")
-        run_batch_mode(model, args.output, stdin_data)
+        if stdin_data.strip():
+            run_batch_mode(model, args.output, stdin_data)
 
 if __name__ == "__main__":
     main()

@@ -5,176 +5,65 @@
 ---
 
 # English
+A minimal, cost-optimized pipeline for generating music using Meta’s MusicGen on **GCP Spot Instances**.
 
-A minimal, reproducible, cloud‑ready pipeline for generating music using Meta’s MusicGen models.
+### ✨ Key Features
+- **Spot L4 GPU**: Optimized for NVIDIA L4 (G2 instances), reducing costs by ~70-90%.
+- **Podman/Docker Ready**: Fully containerized environment for reproducibility.
+- **Smart Naming**: Files are saved as `tag_s{seed}_h{prompt_hash}` for easy tracking.
+- **Automated Workflow**: `driver.py` handles VM lifecycle, result download, and cleanup.
 
-This project provides:
+### 🚀 Usage
+1. **Setup `.env`**: Define `PROJECT`, `IMAGE`, `MODEL_SIZE`.
+2. **Build & Push (Podman)**:
+   ```bash
+   podman build -t musicgen .
+   podman tag musicgen $IMAGE
+   podman push $IMAGE
 
-- Local testing with the **small** model  
-- Cloud (GCP) generation with the **medium** model  
-- A unified script (`music_gen_cloud.py`) that works identically on local machines, Docker, and GCP  
-- Prompt input via **standard input** for maximum flexibility  
-- Full control over generation parameters (duration, temperature, top‑k, etc.)
-
-This repository is designed for automation, reproducibility, and fast GPU‑accelerated generation.
-
----
-
-## 🎵 Usage: `music_gen_cloud.py`
-
-### Pass prompt via standard input (recommended)
-
-```bash
-echo "bright UK rock with energetic drums" | python music_gen_cloud.py
 ```
 
-### Pass prompt from a file
-
+3. **Execution**:
 ```bash
-python music_gen_cloud.py < prompt.txt
+python driver.py
+
 ```
 
----
 
-## 🎛 Parameters
 
-| Parameter       | Description                          | Default |
-|-----------------|--------------------------------------|---------|
-| `--model`       | small / medium / large               | medium  |
-| `--duration`    | Duration in seconds                  | 30      |
-| `--top-k`       | Top‑k sampling                       | 250     |
-| `--top-p`       | Top‑p sampling                       | 0.95    |
-| `--temperature` | Sampling temperature                 | 1.0     |
-| `--cfg-scale`   | Prompt adherence strength            | 3.0     |
-| `--output`      | Output WAV file path                 | /output/music.wav |
+### 📝 Batch Configuration (`sample.jsonl`)
 
----
+Add jobs line by line:
 
-## 🎧 Example
+```json
+{"prompt": "Lo-fi hip hop", "duration": 30, "seed": 42, "filename_tag": "relax"}
 
-```bash
-echo "UK rock with bright guitars and strong drums" \
-  | python music_gen_cloud.py \
-      --model medium \
-      --duration 300 \
-      --output /output/uk_rock.wav
 ```
-
----
-
-## 🐳 Docker (to be added)
-
-A Dockerfile will be added to support:
-
-- CUDA‑enabled PyTorch  
-- ffmpeg  
-- audiocraft  
-- Automatic model download  
-- CPU fallback  
-- Minimal image size  
-
----
-
-## ☁️ Google Cloud Platform (to be added)
-
-Upcoming sections:
-
-- Artifact Registry setup  
-- GCS bucket for output  
-- VM startup script  
-- Fully automated generation pipeline  
-- One‑command execution from local machine  
-
----
-
-## 📄 License
-
-MIT (planned)
 
 ---
 
 # 日本語
 
-Meta の MusicGen モデルを使って音楽を生成するための、  
-**最小・再現性重視・クラウド対応のパイプライン**です。
+GCP スポットインスタンスを利用した、低コストかつ再現性の高い MusicGen 生成パイプラインです。
 
-このプロジェクトは以下を提供します：
+### ✨ 主な特徴
 
-- ローカルでは **small** モデルで軽量テスト  
-- GCP では **medium** モデルで高速生成  
-- ローカル / Docker / GCP で共通して動作する `music_gen_cloud.py`  
-- プロンプトは **標準入力** で渡す UNIX 的な柔軟設計  
-- duration / temperature / top‑k などのパラメータを完全制御  
+* **Spot L4 GPU**: 最新の NVIDIA L4 GPU を活用し、生成費用を劇的に削減。
+* **Podman 対応**: 現場で使いやすい Podman でのビルド・デプロイ手順を完備。
+* **再現性の担保**: シード値とプロンプトのハッシュ値をファイル名に自動付与。
+* **フルオート**: `driver.py` 一つで VM の作成から生成、結果の回収、VM の削除まで完結。
 
-自動化・再現性・高速 GPU 生成を目的に設計されています。
+### 🚀 使い方
 
----
+1. **環境設定**: `.env` ファイルにプロジェクト設定を記述。
+2. **ビルドとプッシュ**:
+上記 English セクションのコマンドを参照（Podman 推奨）。
+3. **実行**:
+`python driver.py` を実行。生成されたファイルは `./downloaded_wav/` に保存されます。
 
-## 🎵 `music_gen_cloud.py` の使い方
+### 📝 設定ファイル (`sample.jsonl`) の書き方
 
-### 標準入力でプロンプトを渡す（推奨）
-
-```bash
-echo "bright uk rock with energetic drums" | python music_gen_cloud.py
-```
-
-### ファイルからプロンプトを渡す
-
-```bash
-python music_gen_cloud.py < prompt.txt
-```
-
----
-
-## 🎛 パラメーター一覧
-
-| パラメーター | 説明 | デフォルト |
-|--------------|------|------------|
-| `--model` | small / medium / large | medium |
-| `--duration` | 生成秒数 | 30 |
-| `--top-k` | 多様性（整数） | 250 |
-| `--top-p` | 多様性（確率） | 0.95 |
-| `--temperature` | 創造性 | 1.0 |
-| `--cfg-scale` | プロンプトの強さ | 3.0 |
-| `--output` | 出力 WAV ファイルパス | /output/music.wav |
-
----
-
-## 🎧 生成例
-
-```bash
-echo "UK rock with bright guitars and strong drums" \
-  | python music_gen_cloud.py \
-      --model medium \
-      --duration 300 \
-      --output /output/uk_rock.wav
-```
-
----
-
-## 🐳 Docker（後で追加予定）
-
-Dockerfile では以下をサポート予定：
-
-- CUDA 対応 PyTorch  
-- ffmpeg  
-- audiocraft  
-- モデルの自動ダウンロード  
-- CPU fallback  
-- 最小サイズのコンテナ  
-
----
-
-## ☁️ GCP（後で追加予定）
-
-- Artifact Registry  
-- GCS バケット  
-- VM startup-script  
-- 自動生成パイプライン  
-- ローカルからワンコマンド実行  
-
----
-
-## 📄 ライセンス
-
-MIT（予定）
+* `prompt`: 生成したい音楽の説明
+* `duration`: 生成する長さ（秒）
+* `seed`: 再現用のシード値（任意）
+* `filename_tag`: ファイル名のプレフィックス
