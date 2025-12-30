@@ -6,175 +6,101 @@
 
 # English
 
-A minimal, reproducible, cloud‑ready pipeline for generating music using Meta’s MusicGen models.
+A minimal, reproducible, and cost-optimized cloud pipeline for generating music using Meta’s MusicGen models on **Google Cloud Platform (GCP)**.
 
-This project provides:
+This project allows you to leverage high-performance GPUs for music generation with just a single command, while keeping costs extremely low using Spot Instances.
 
-- Local testing with the **small** model  
-- Cloud (GCP) generation with the **medium** model  
-- A unified script (`music_gen_cloud.py`) that works identically on local machines, Docker, and GCP  
-- Prompt input via **standard input** for maximum flexibility  
-- Full control over generation parameters (duration, temperature, top‑k, etc.)
+### ✨ Key Features
+- **Cost Optimized**: Uses **GCP Spot Instances** to reduce GPU costs by ~60-90%.
+- **High Performance**: Pre-configured for **NVIDIA L4 GPUs** (G2 standard instances).
+- **Smart Naming**: Generated files are automatically named with `tag_seed_hash` (e.g., `focus_s42_h8a2b3c4...`) to track exact prompt/seed combinations.
+- **Robust Environment**: Docker-based execution ensures the same results locally and in the cloud.
+- **Automated Workflow**: `driver.py` handles VM creation, setup, generation, file download, and cleanup.
 
-This repository is designed for automation, reproducibility, and fast GPU‑accelerated generation.
+## 🎵 Usage
 
----
+### 1. Prerequisites
+- A GCP Project with Billing enabled.
+- `gcloud` CLI and Python 3.x installed locally.
+- A Docker image pushed to Google Artifact Registry.
 
-## 🎵 Usage: `music_gen_cloud.py`
-
-### Pass prompt via standard input (recommended)
-
+### 2. Local Setup
+Create a `.env` file in the root directory:
 ```bash
-echo "bright UK rock with energetic drums" | python music_gen_cloud.py
+PROJECT=your-project-id
+IMAGE=us-east1-docker.pkg.dev/your-project/repo/musicgen:latest
+ZONE=us-east1-c
+INSTANCE_NAME=musicgen-l4-spot
+MODEL_SIZE=medium
+DELETE_VM=True
+
 ```
 
-### Pass prompt from a file
+### 3. Execution
+
+Simply run the driver script:
 
 ```bash
-python music_gen_cloud.py < prompt.txt
+python driver.py
+
 ```
 
----
+This will:
 
-## 🎛 Parameters
-
-| Parameter       | Description                          | Default |
-|-----------------|--------------------------------------|---------|
-| `--model`       | small / medium / large               | medium  |
-| `--duration`    | Duration in seconds                  | 30      |
-| `--top-k`       | Top‑k sampling                       | 250     |
-| `--top-p`       | Top‑p sampling                       | 0.95    |
-| `--temperature` | Sampling temperature                 | 1.0     |
-| `--cfg-scale`   | Prompt adherence strength            | 3.0     |
-| `--output`      | Output WAV file path                 | /output/music.wav |
-
----
-
-## 🎧 Example
-
-```bash
-echo "UK rock with bright guitars and strong drums" \
-  | python music_gen_cloud.py \
-      --model medium \
-      --duration 300 \
-      --output /output/uk_rock.wav
-```
-
----
-
-## 🐳 Docker (to be added)
-
-A Dockerfile will be added to support:
-
-- CUDA‑enabled PyTorch  
-- ffmpeg  
-- audiocraft  
-- Automatic model download  
-- CPU fallback  
-- Minimal image size  
-
----
-
-## ☁️ Google Cloud Platform (to be added)
-
-Upcoming sections:
-
-- Artifact Registry setup  
-- GCS bucket for output  
-- VM startup script  
-- Fully automated generation pipeline  
-- One‑command execution from local machine  
-
----
-
-## 📄 License
-
-MIT (planned)
+1. Create a Spot L4 VM.
+2. Run `music_gen_cloud.py` inside Docker via the startup script.
+3. Download all generated `.wav` files to `./downloaded_wav/`.
+4. Delete the VM automatically to save costs.
 
 ---
 
 # 日本語
 
-Meta の MusicGen モデルを使って音楽を生成するための、  
-**最小・再現性重視・クラウド対応のパイプライン**です。
+Meta の MusicGen モデルを **Google Cloud Platform (GCP)** 上で実行するための、コスト最適化済みミュージック生成パイプラインです。
 
-このプロジェクトは以下を提供します：
+コマンド一つで最新の GPU 環境を立ち上げ、生成完了後に自動で片付けを行うため、手軽かつ安価に大量の音楽生成が可能です。
 
-- ローカルでは **small** モデルで軽量テスト  
-- GCP では **medium** モデルで高速生成  
-- ローカル / Docker / GCP で共通して動作する `music_gen_cloud.py`  
-- プロンプトは **標準入力** で渡す UNIX 的な柔軟設計  
-- duration / temperature / top‑k などのパラメータを完全制御  
+### ✨ 主な特徴
 
-自動化・再現性・高速 GPU 生成を目的に設計されています。
+* **低コスト**: **GCP スポットインスタンス** を採用し、GPU 費用を通常の 1/3 以下に抑えます。
+* **最新 GPU 対応**: 推論効率に優れた **NVIDIA L4 GPU** (G2 インスタンス) に最適化。
+* **進化した命名規則**: ファイル名に `タグ_シード値_プロンプトハッシュ` を自動付与。どのプロンプトから生成されたか一目で分かります。
+* **ポータビリティ**: Docker 環境により、ローカルでのテストとクラウド実行で全く同じ結果が得られます。
+* **フルオート**: `driver.py` が VM の作成から、生成結果の回収、VM の削除までを一括管理します。
 
----
+## 🚀 使い方
 
-## 🎵 `music_gen_cloud.py` の使い方
+### 1. 事前準備
 
-### 標準入力でプロンプトを渡す（推奨）
+* GCP プロジェクトと課金設定。
+* ローカル環境への `gcloud` CLI と Python 3.x のインストール。
+* Artifact Registry への Docker イメージのプッシュ。
 
-```bash
-echo "bright uk rock with energetic drums" | python music_gen_cloud.py
-```
+### 2. 環境設定
 
-### ファイルからプロンプトを渡す
-
-```bash
-python music_gen_cloud.py < prompt.txt
-```
-
----
-
-## 🎛 パラメーター一覧
-
-| パラメーター | 説明 | デフォルト |
-|--------------|------|------------|
-| `--model` | small / medium / large | medium |
-| `--duration` | 生成秒数 | 30 |
-| `--top-k` | 多様性（整数） | 250 |
-| `--top-p` | 多様性（確率） | 0.95 |
-| `--temperature` | 創造性 | 1.0 |
-| `--cfg-scale` | プロンプトの強さ | 3.0 |
-| `--output` | 出力 WAV ファイルパス | /output/music.wav |
-
----
-
-## 🎧 生成例
+ルートディレクトリに `.env` ファイルを作成します：
 
 ```bash
-echo "UK rock with bright guitars and strong drums" \
-  | python music_gen_cloud.py \
-      --model medium \
-      --duration 300 \
-      --output /output/uk_rock.wav
+PROJECT=your-project-id
+IMAGE=us-east1-docker.pkg.dev/your-project/repo/musicgen:latest
+MODEL_SIZE=medium   # small, medium, large から選択
+
 ```
 
----
+### 3. 実行
 
-## 🐳 Docker（後で追加予定）
+以下のコマンドを実行するだけです：
 
-Dockerfile では以下をサポート予定：
+```bash
+python driver.py
 
-- CUDA 対応 PyTorch  
-- ffmpeg  
-- audiocraft  
-- モデルの自動ダウンロード  
-- CPU fallback  
-- 最小サイズのコンテナ  
+```
 
----
+実行後、自動的に `./downloaded_wav/` フォルダへ生成された音声ファイルがダウンロードされます。
 
-## ☁️ GCP（後で追加予定）
+## 🛠️ File Structure
 
-- Artifact Registry  
-- GCS バケット  
-- VM startup-script  
-- 自動生成パイプライン  
-- ローカルからワンコマンド実行  
-
----
-
-## 📄 ライセンス
-
-MIT（予定）
+* `music_gen_cloud.py`: 推論メインスクリプト（コンテナ内実行用）。
+* `driver.py`: ローカル側のオーケストレーター。
+* `run_musicgen.sh`: VM 起動時に実行されるセットアップスクリプト。
+* `sample.jsonl`: 生成プロンプトのバッチリスト。
