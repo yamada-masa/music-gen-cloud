@@ -81,6 +81,14 @@ if __name__ == "__main__":
     try:
         log_progress("Starting MusicGen Cloud Pipeline")
 
+        # --- Force LF line endings for GCE compatibility ---
+        for f_path in [JSONL_LOCAL, "run_musicgen.sh"]:
+            if os.path.exists(f_path):
+                with open(f_path, "rb") as f:
+                    data = f.read()
+                with open(f_path, "wb") as f:
+                    f.write(data.replace(b"\r\n", b"\n"))
+
         # Create Spot L4 Instance / Spot L4 インスタンスを作成
         log_progress(f"Creating Spot L4 Instance (Model: {MODEL_SIZE})...")
         
