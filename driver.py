@@ -86,20 +86,21 @@ if __name__ == "__main__":
         
         # NOTE: --metadata-from-file is used for 'jsonl_payload' to prevent gcloud comma-parsing errors on Windows.
         # 注: Windowsでのカンマ区切り解析エラーを防ぐため、jsonl_payload はファイルから読み込ませます。
+        
         create_args = [
             cmd("gcloud"), "compute", "instances", "create", INSTANCE_NAME,
             f"--project={PROJECT}", f"--zone={ZONE}",
             "--machine-type=g2-standard-4",
             "--accelerator=count=1,type=nvidia-l4",
             "--provisioning-model=SPOT",
-            "--instance-termination-action=STOP",  # Fixed from TERMINATE
+            "--instance-termination-action=STOP",
             "--image-family=common-cu124-debian-11",
             "--image-project=ml-images",
             f"--metadata=image={IMAGE},model_size={MODEL_SIZE},progress=starting",
-            "--metadata-from-file=startup-script=run_musicgen.sh",
-            f"--metadata-from-file=jsonl_payload={JSONL_LOCAL}",
+            f"--metadata-from-file=startup-script=run_musicgen.sh,jsonl_payload={JSONL_LOCAL}",
             "--scopes=https://www.googleapis.com/auth/cloud-platform"
         ]
+
 
         subprocess.run(create_args, check=True)
         

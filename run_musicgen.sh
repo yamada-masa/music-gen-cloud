@@ -4,7 +4,7 @@ set -euo pipefail
 
 # Update progress metadata / 進捗メタデータを更新する関数
 update_progress() {
-    curl -X PUT -H "Metadata-Flavor: Google" -d "$1" "http://metadata.google.internal/computeMetadata/v1/instance/attributes/progress"
+    curl -X PUT -H "Metadata-Flavor: Google" -d "$1" "http://metadata.google.internal/computeMetadata/v1/instance/attributes/progress" || log "Progress update skipped (405)"
 }
 
 log() {
