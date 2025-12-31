@@ -1,15 +1,15 @@
 import os
 import subprocess
 import time
-import json
 import shutil
 import platform
+import json  # JSONL 読み込み用
 
-# Track the overall start time / 全体の開始時間を記録
+# Track overall start time
 overall_start = time.time()
 
 def load_env_file(path=".env"):
-    """Load .env file / .env ファイルを読み込む"""
+    """Load .env file / .env 読み込み"""
     if not os.path.exists(path):
         return
     with open(path, "r", encoding="utf-8") as f:
@@ -24,29 +24,29 @@ def load_env_file(path=".env"):
 load_env_file()
 
 def log_progress(message):
-    """Print message with elapsed time / 経過時間と共にメッセージを表示"""
+    """Log with time"""
     elapsed = time.time() - overall_start
     print(f"[{elapsed:6.1f}s] {message}")
 
 def get_env_or_error(key: str) -> str:
-    """Get env var / 環境変数を取得"""
+    """Env get / 環境変数取得"""
     value = os.getenv(key)
     if not value:
-        raise EnvironmentError(f"Error: Environment variable '{key}' is not set.")
+        raise EnvironmentError(f"Error: '{key}' is not set.")
     return value
 
-# Config from .env
+# Config
 PROJECT = get_env_or_error("PROJECT")
 IMAGE = get_env_or_error("IMAGE")
 ZONE = os.getenv("ZONE", "us-east1-c")
 JSONL_LOCAL = os.getenv("JSONL_LOCAL", "sample.jsonl")
 OUTDIR = os.getenv("OUTDIR", "./downloaded_wav")
-INSTANCE_NAME = os.getenv("INSTANCE_NAME", "musicgen-l4")
+INSTANCE_NAME = os.getenv("INSTANCE_NAME", "musicgen-l4-spot")
 DELETE_VM = os.getenv("DELETE_VM", "True").lower() == "true"
 MODEL_SIZE = os.getenv("MODEL_SIZE", "medium")
 
 def cmd(name: str) -> str:
-    """Return command name / OS に応じて実行ファイル名を返す"""
+    """Check OS command / OS別コマンド名確認"""
     system = platform.system().lower()
     if system.startswith("win"):
         cand = f"{name}.cmd"
@@ -54,34 +54,98 @@ def cmd(name: str) -> str:
             return cand
     return name
 
-def wait_for_completion():
-    """Monitor VM progress via metadata / メタデータを監視して進捗を表示"""
-    log_progress(f"Monitoring VM: {INSTANCE_NAME}...")
+def wait_for_completion(max_wait_seconds: int):
+    """Monitor VM progress via journalctl / startup-script の終了をログで検知"""
+    log_progress(f"Monitoring VM: {INSTANCE_NAME} (Max wait: {max_wait_seconds}s)...")
     start_wait = time.time()
 
     while True:
-        # Get progress status from metadata / メタデータから進捗を取得
-        res = subprocess.run([cmd("gcloud"), "compute", "instances", "describe", INSTANCE_NAME, f"--zone={ZONE}", f"--project={PROJECT}", "--format=value(metadata.items.progress)"], capture_output=True, text=True)
-        status = res.stdout.strip() or "Initializing"
+        # Check VM status
+        res = subprocess.run(
+            [
+                cmd("gcloud"),
+                "compute",
+                "instances",
+                "describe",
+                INSTANCE_NAME,
+                f"--zone={ZONE}",
+                f"--project={PROJECT}",
+                "--format=value(status)",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if res.returncode != 0:
+            log_progress("Instance disappeared or check failed.")
+            return False
 
-        # Check if startup script finished via SSH / SSH経由で起動スクリプトの終了判定
-        # Note: Needs gcloud auth and project access
-        check = subprocess.run([cmd("gcloud"), "compute", "ssh", INSTANCE_NAME, f"--zone={ZONE}", "--project", PROJECT, "--command", "sudo journalctl -u google-startup-scripts.service --no-pager"], capture_output=True, text=True)
+        # Monitor via journalctl
+        check = subprocess.run(
+            [
+                cmd("gcloud"),
+                "compute",
+                "ssh",
+                INSTANCE_NAME,
+                f"--zone={ZONE}",
+                f"--project={PROJECT}",
+                "--command",
+                "sudo journalctl -u google-startup-scripts.service --no-pager",
+            ],
+            capture_output=True,
+            text=True,
+        )
 
         if "Finished running startup scripts" in check.stdout:
-            print("") # New line
+            print("")
             log_progress("VM task finished successfully.")
-            break
+            return True
 
-        waiting_for = time.time() - start_wait
-        print(f"  >>> Current Status: [{status}] ({waiting_for:.0f}s elapsed)      ", end="\r")
-        time.sleep(10)
+        # Dynamic timeout based on JSONL duration
+        elapsed = time.time() - start_wait
+        if elapsed > max_wait_seconds:
+            log_progress(f"Timeout reaching {max_wait_seconds} seconds.")
+            return False
+
+        print(
+            f"  >>> Waiting for completion... ({elapsed:.0f}s elapsed)      ",
+            end="\r",
+        )
+        time.sleep(20)
+
+def calc_dynamic_timeout(jsonl_path: str) -> int:
+    """JSONL の duration 合計からタイムアウト秒数を計算"""
+    total_duration = 0
+    if os.path.exists(jsonl_path):
+        with open(jsonl_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    data = json.loads(line)
+                    total_duration += int(data.get("duration", 0))
+                except Exception:
+                    continue
+
+    # medium × L4 前提のざっくり係数:
+    # 生成時間 ≒ duration * 2.0〜2.5 + 起動オーバーヘッド
+    base_overhead = 600  # 起動・pull 等で 10 分ぶん
+    gen_factor = 2.0     # 1秒あたり2倍の余裕（かなり安全寄り）
+    estimated = base_overhead + int(total_duration * gen_factor)
+
+    # さらに 20% バッファ
+    return int(estimated * 1.3)
 
 if __name__ == "__main__":
+    success = False
     try:
-        log_progress("Starting MusicGen Cloud Pipeline")
+        log_progress("Starting Pipeline")
 
-        # --- Force LF line endings for GCE compatibility ---
+        # Calculate dynamic timeout from JSONL
+        max_wait = calc_dynamic_timeout(JSONL_LOCAL)
+        log_progress(f"Calculated dynamic timeout: {max_wait} seconds.")
+
+        # Line ending fix
         for f_path in [JSONL_LOCAL, "run_musicgen.sh"]:
             if os.path.exists(f_path):
                 with open(f_path, "rb") as f:
@@ -89,43 +153,62 @@ if __name__ == "__main__":
                 with open(f_path, "wb") as f:
                     f.write(data.replace(b"\r\n", b"\n"))
 
-        # Create Spot L4 Instance / Spot L4 インスタンスを作成
-        log_progress(f"Creating Spot L4 Instance (Model: {MODEL_SIZE})...")
-        
-        # NOTE: --metadata-from-file is used for 'jsonl_payload' to prevent gcloud comma-parsing errors on Windows.
-        # 注: Windowsでのカンマ区切り解析エラーを防ぐため、jsonl_payload はファイルから読み込ませます。
-        
+        # Create VM (Keep metadata-from-file as per original design)
         create_args = [
-            cmd("gcloud"), "compute", "instances", "create", INSTANCE_NAME,
-            f"--project={PROJECT}", f"--zone={ZONE}",
+            cmd("gcloud"),
+            "compute",
+            "instances",
+            "create",
+            INSTANCE_NAME,
+            f"--project={PROJECT}",
+            f"--zone={ZONE}",
             "--machine-type=g2-standard-4",
             "--accelerator=count=1,type=nvidia-l4",
             "--provisioning-model=SPOT",
-            "--instance-termination-action=STOP",
+            "--instance-termination-action=DELETE",
             "--image-family=common-cu124-debian-11",
             "--image-project=ml-images",
-            f"--metadata=image={IMAGE},model_size={MODEL_SIZE},progress=starting",
+            f"--metadata=install-nvidia-driver=True,image={IMAGE},model_size={MODEL_SIZE},progress=starting",
             f"--metadata-from-file=startup-script=run_musicgen.sh,jsonl_payload={JSONL_LOCAL}",
-            "--scopes=https://www.googleapis.com/auth/cloud-platform"
+            "--scopes=https://www.googleapis.com/auth/cloud-platform",
         ]
-
-
         subprocess.run(create_args, check=True)
-        
-        # Monitor the process / 進捗を監視
-        wait_for_completion()
 
-        # Download result wav files / 結果のwavファイルをダウンロード
-        log_progress(f"Downloading results to {OUTDIR}...")
-        os.makedirs(OUTDIR, exist_ok=True)
-        # scp result files / ファイルをローカルへ転送
-        subprocess.run([cmd("gcloud"), "compute", "scp", "--recurse", f"{INSTANCE_NAME}:/opt/musicgen/out/*.wav", OUTDIR, f"--zone={ZONE}", f"--project={PROJECT}"], check=True)
+        # Start monitoring with dynamic timeout
+        success = wait_for_completion(max_wait)
+
+        if success:
+            log_progress("Downloading results...")
+            os.makedirs(OUTDIR, exist_ok=True)
+            subprocess.run(
+                [
+                    cmd("gcloud"),
+                    "compute",
+                    "scp",
+                    "--recurse",
+                    f"{INSTANCE_NAME}:/opt/musicgen/out",
+                    f"{OUTDIR}/",
+                    f"--zone={ZONE}",
+                    f"--project={PROJECT}",
+                ],
+                check=True,
+            )
 
     except Exception as e:
-        log_progress(f"An error occurred: {e}")
-
+        log_progress(f"Error: {e}")
     finally:
-        # Final cleanup / 最終クリーンアップ（インスタンス削除）
         if DELETE_VM:
-            log_progress(f"Deleting instance {INSTANCE_NAME}...")
-            subprocess.run([cmd("gcloud"), "compute", "instances", "delete", INSTANCE_NAME, f"--zone={ZONE}", "--project", PROJECT, "--quiet"])
+            log_progress(f"Cleaning up {INSTANCE_NAME}...")
+            subprocess.run(
+                [
+                    cmd("gcloud"),
+                    "compute",
+                    "instances",
+                    "delete",
+                    INSTANCE_NAME,
+                    f"--zone={ZONE}",
+                    "--project",
+                    PROJECT,
+                    "--quiet",
+                ]
+            )
