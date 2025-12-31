@@ -96,7 +96,8 @@ if __name__ == "__main__":
             "--image-family=common-cu124-debian-11",
             "--image-project=ml-images",
             f"--metadata=image={IMAGE},model_size={MODEL_SIZE},progress=starting",
-            f"--metadata-from-file=startup-script=run_musicgen.sh,jsonl_payload={JSONL_LOCAL}",
+            "--metadata-from-file=startup-script=run_musicgen.sh",
+            f"--metadata-from-file=jsonl_payload={JSONL_LOCAL}",
             "--scopes=https://www.googleapis.com/auth/cloud-platform"
         ]
 

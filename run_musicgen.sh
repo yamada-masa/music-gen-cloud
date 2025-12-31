@@ -25,7 +25,7 @@ INPUT="${WORKDIR}/input.jsonl"
 mkdir -p "${OUTDIR}"
 
 # Restore JSONL / JSONL復元
-echo "$JSONL_DATA" > "${INPUT}"
+printf "%s\n" "$JSONL_DATA" > "${INPUT}"
 
 update_progress "Pulling Docker image"
 gcloud auth configure-docker us-east1-docker.pkg.dev -q
